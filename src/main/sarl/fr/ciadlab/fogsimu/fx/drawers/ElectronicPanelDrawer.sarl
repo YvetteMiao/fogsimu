@@ -1,0 +1,80 @@
+/* 
+ * $Id$
+ * This file is a part of the Arakhne Foundation Classes, http://www.arakhne.org/afc
+ * 
+ * Copyright (c) 2019 The original authors, and other authors.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package fr.ciadlab.fogsimu.fx.drawers
+
+import fr.ciadlab.fogsimu.environment.ElectronicPanel
+import fr.ciadlab.fogsimu.fx.FxApp
+import java.lang.ref.SoftReference
+import javafx.scene.image.Image
+import javafx.scene.paint.Color
+import org.arakhne.afc.gis.ui.drawers.AbstractMapPointDrawer
+import org.arakhne.afc.math.geometry.d2.d.Point2d
+import org.arakhne.afc.nodefx.ZoomableGraphicsContext
+import org.arakhne.afc.vmutil.Resources
+
+/** Drawer for the electronic panels.
+ * 
+ * @author $Author: sgalland$
+ * @version $FullVersion$
+ * @mavengroupid $GroupId$
+ * @mavenartifactid $ArtifactId$
+ */
+class ElectronicPanelDrawer extends AbstractMapPointDrawer<ElectronicPanel> {
+
+	static val PANEL_SIZE = 20.0
+
+	static val DEMI_PANEL_SIZE = PANEL_SIZE / 2.0
+
+	static var icon : SoftReference<Image>
+
+	static def getIcon : Image {
+		var ic = icon?.get
+		if (ic === null) {
+			var url = Resources::getResource(typeof(FxApp), "panel.png");
+			ic = new Image(url as String)
+			icon = new SoftReference(ic)
+		}
+		return ic
+	}
+
+	def getPrimitiveType : Class<? extends ElectronicPanel> {
+		typeof(ElectronicPanel)
+	}
+
+	def draw(gc : ZoomableGraphicsContext, element : ElectronicPanel) {
+		var image = getIcon
+		if (image !== null) {
+			gc.drawImage(image, element.x - DEMI_PANEL_SIZE, element.y, PANEL_SIZE, PANEL_SIZE)
+		}
+		gc.fill = Color::BLACK
+		gc.stroke = Color::BLACK
+		gc.beginPath
+		defineBigRectangle(gc, element)
+		gc.fill()
+		gc.stroke()
+		
+		var p = element.roadPosition
+		var p2 = new Point2d
+		p.segment.projectsOnPlane(p.curvilineCoordinate, p.lateralDistance, p2, null)
+		
+		gc.beginPath
+		gc.moveTo(element.point.x, element.point.y)
+		gc.lineTo(p2.x, p2.y)
+		gc.stroke()
+	}
+		
+}

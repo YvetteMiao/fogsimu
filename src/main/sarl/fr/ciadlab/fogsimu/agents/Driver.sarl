@@ -1,0 +1,29 @@
+/*
+ * $Id$
+ *
+ * Copyright (c) 2019 Stephane GALLAND.
+ */
+
+package fr.ciadlab.fogsimu.agents
+
+import org.arakhne.afc.simulation.framework.framework1d.agents.AbstractSimulatedAgent1d
+import org.arakhne.afc.simulation.framework.framework1d.events.RoadPerception
+import org.arakhne.afc.simulation.framework.framework1d.skills.RoadEnvironment
+
+/**
+ * The agent that supports the driver behavior.
+ *
+ * @author $Author: sgalland$
+ * @version $FullVersion$
+ * @mavengroupid $GroupId$
+ * @mavenartifactid $ArtifactId$
+ */
+agent Driver extends AbstractSimulatedAgent1d {
+
+	uses RoadEnvironment
+
+	on RoadPerception {
+		doNothing
+	}
+
+}

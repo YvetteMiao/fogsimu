@@ -1,0 +1,226 @@
+/* 
+ * $Id$
+ * This file is a part of the Arakhne Foundation Classes, http://www.arakhne.org/afc
+ * 
+ * Copyright (c) 2000-2012 Stephane GALLAND.
+ * Copyright (c) 2005-10, Multiagent Team, Laboratoire Systemes et Transports,
+ * Universite de Technologie de Belfort-Montbeliard.
+ * Copyright (c) 2013-2019 The original authors, and other authors.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.arakhne.afc.simulation.framework.framework1d.scenario
+
+import java.io.File
+import java.util.List
+import org.arakhne.afc.gis.mapelement.MapElement
+import org.arakhne.afc.gis.maplayer.MapElementLayer
+import org.arakhne.afc.gis.maplayer.MultiMapLayer
+import org.arakhne.afc.gis.maplayer.TreeMapElementLayer
+import org.arakhne.afc.gis.primitive.GISContainer
+import org.arakhne.afc.gis.road.layer.RoadNetworkLayer
+import org.arakhne.afc.gis.road.primitive.RoadSegment
+import org.arakhne.afc.simulation.framework.framework1d.config.AbstractConfiguration1d
+import org.arakhne.afc.simulation.framework.framework1d.environment.EnvironmentModel1d
+import org.arakhne.afc.simulation.framework.framework1d.environment.RoadObject
+import org.arakhne.afc.simulation.framework.framework1d.environment.Spawner1d
+import org.arakhne.afc.vmutil.ReflectionUtil
+import org.arakhne.afc.simulation.framework.base.scenario.SimulationScenarioFactory
+import org.arakhne.afc.math.stochastic.StochasticLaw
+import org.arakhne.afc.simulation.framework.base.config.SpawnerConfig
+import org.arakhne.afc.simulation.framework.framework1d.environment.MobileAgentBody
+
+import static extension org.arakhne.afc.vmutil.ReflectionUtil.*
+
+/**
+ * Reader of Simulation scenario.
+ *
+ * @param <T> the type of the configuration to read.
+ * @author $Author: sgalland$
+ * @version $FullVersion$
+ * @mavengroupid $GroupId$
+ * @mavenartifactid $ArtifactId$
+ */
+class SimulationScenarioFactory1d<T extends AbstractConfiguration1d> implements SimulationScenarioFactory<SimulationScenario1d<T>> {
+
+	val shapeReader = new ShapeReader
+
+	val xmlReader : AbstractXmlConfigurationReader1d<T>
+
+	new (xmlReader : AbstractXmlConfigurationReader1d<T>) {
+		assert xmlReader !== null
+		this.xmlReader = xmlReader
+	}
+
+	/** Read standard layers from the simulation configuration and include them into the simulation scenario.
+	 * 
+	 * @param configuration the simulation configuration.
+	 * @param loadedRoads the layer that contains the loaded roads.
+	 * @param containers the collection of layers that must be included into the simulation. 
+	 */
+	def loadStandardLayers(configuration : T, loadedRoads : RoadNetworkLayer,
+		containers : List<MapElementLayer<?>>) : void {
+		for (layer : configuration.layers) {
+			var loadedResource = this.shapeReader.loadShapeFile(layer.file)
+			if (loadedResource !== null) {
+				loadedResource.UUID = layer.ID
+				var id = layer.name
+				if (!id.isNullOrEmpty) {
+					loadedResource.name = id
+				}
+				containers.add(loadedResource)
+			}
+		}
+	}
+
+	/** Read road objects from the simulation configuration and include them into the simulation scenario.
+	 * 
+	 * @param configuration the simulation configuration.
+	 * @param loadedRoads the layer that contains the loaded roads.
+	 * @param containers the collection of layers that must be included into the simulation. 
+	 */
+	def loadRoadObjects(configuration : T, loadedRoads : RoadNetworkLayer,
+		containers : List<MapElementLayer<?>>) : void {
+		var network = loadedRoads.roadNetwork
+		var objectLayer = new TreeMapElementLayer
+		for (group : configuration.roadObjectGroups) {
+			for (obj : group.roadObjects) {
+				var pos1d = network.getNearestPosition(obj.position)
+				var id = obj.ID
+				var text = obj.text
+				var instance : RoadObject
+				if (text.nullOrEmpty) {
+					instance = obj.type.newInstance(id, pos1d, obj.position)
+				} else {
+					instance = obj.type.newInstance(id, pos1d, obj.position, text)
+				}
+				(instance.roadPosition.segment as RoadSegment).addUserData(
+					EnvironmentModel1d::IMMOBILE_OBJECTS_ATTRIBUTE_NAME, instance)
+				if (instance instanceof MapElement) {
+					objectLayer.addMapElement(instance)
+				}
+			}
+		}
+		if (!objectLayer.isEmpty) {
+			containers.add(objectLayer)
+		}
+	}
+
+	/** Read spawners from the simulation configuration and include them into the simulation scenario.
+	 * 
+	 * @param configuration the simulation configuration.
+	 * @param loadedRoads the layer that contains the loaded roads.
+	 * @param containers the collection of layers that must be included into the simulation. 
+	 * @param spawners the collection of spawners that must be included into the simulation.
+	 */
+	def loadSpawners(configuration : T, loadedRoads : RoadNetworkLayer, containers : List<MapElementLayer<?>>,
+		spawners : List<Spawner1d>) : void {
+		var network = loadedRoads.roadNetwork
+		for (obj : configuration.spawners) {
+			if (obj.agentType !== null) {
+				var pos1d = network.getNearestPosition(obj.position)
+				var id = obj.ID
+				var law = obj.createLawObject
+				if (law !== null) {
+					var bt0 = obj.bodyType
+					var bt1 : Class<? extends MobileAgentBody>
+					if (bt0 !== null && typeof(MobileAgentBody).isAssignableFrom(bt0)) {
+						bt1 = bt0.asSubclass(typeof(MobileAgentBody))
+					} else {
+						bt1 = typeof(MobileAgentBody)
+					}
+					var spawner = new Spawner1d(pos1d, 4.5, 1.9, id, law, obj.budget, obj.agentType, bt1)
+					spawners += spawner
+				}
+			}
+		}
+	}
+
+	protected def getStochasticLawType(name : String) : Class<? extends StochasticLaw> {
+		var type : Class<?>
+		try {
+			type = ReflectionUtil::forName(name)
+		} catch (e0 : Throwable) {
+			var nn = typeof(StochasticLaw).package.name + "." + name.toFirstUpper
+			try {
+				type = ReflectionUtil::forName(nn)
+			} catch (e1 : Throwable) {
+				try {
+					type = ReflectionUtil::forName(nn + "StochasticLaw")
+				} catch (e2 : Throwable) {
+				//
+				}
+			}
+		}
+		if (type !== null && typeof(StochasticLaw).isAssignableFrom(type)) {
+			return type.asSubclass(typeof(StochasticLaw))
+		}
+		return null;
+	}
+
+	protected def createLawObject(config : SpawnerConfig) : StochasticLaw {
+		var type = config.law.getStochasticLawType
+		if (type !== null) {
+			try {
+				return type.newInstance(config.lawArguments)
+			} catch (e : Throwable) {
+				//
+			}
+		}
+		return null
+	}
+
+	/** Read a simulation scenario and create the simulation infrastructure.
+	 * 
+	 * @param configuration the simulation configuration.
+	 * @param loadedRoads the layer that contains the loaded roads.
+	 * @param containers the collection of layers that must be included into the simulation. 
+	 * @param spawners the collection of spawners that must be included into the simulation.
+	 */
+	def buildSimulationScenario(configuration : T, loadedRoads : RoadNetworkLayer, containers : List<MapElementLayer<?>>,
+		spawners : List<Spawner1d>) : void {
+		loadStandardLayers(configuration, loadedRoads, containers)
+		loadRoadObjects(configuration, loadedRoads, containers)
+		loadSpawners(configuration, loadedRoads, containers, spawners)
+	}
+
+	/** Read a simulation scenario and create the simulation infrastructure.
+	 *
+	 * @param file the simulation scenario file to read.
+	 * @return the scenario description. 
+	 */
+	def buildSimulationScenario(file : File) : SimulationScenario1d<T> {
+		var configuration = this.xmlReader.loadXmlConfiguration(file)
+
+		val containers = newArrayList
+		var loadedRoads = this.shapeReader.loadRoads(configuration.roadNetwork)
+		if (loadedRoads !== null) {
+			containers.add(loadedRoads)
+			var spawners = <Spawner1d>newArrayList
+			buildSimulationScenario(configuration, loadedRoads, containers, spawners)
+			var container : GISContainer<?>
+			if (containers.size == 1) {
+				container = containers.get(0)
+			} else {
+				val layer = new MultiMapLayer
+				for (child : containers) {
+					layer.addMapLayer(child)
+				}
+				container = layer;
+			}
+
+			var environmentModel = new EnvironmentModel1d(loadedRoads)
+
+			return new SimulationScenario1d(container, environmentModel, configuration, spawners)
+		}
+	}
+
+}

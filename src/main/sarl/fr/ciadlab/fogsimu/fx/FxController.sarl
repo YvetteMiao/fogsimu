@@ -1,0 +1,140 @@
+/* 
+ * $Id$
+ * This file is a part of the Arakhne Foundation Classes, http://www.arakhne.org/afc
+ * 
+ * Copyright (c) 2019 The original authors, and other authors.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package fr.ciadlab.fogsimu.fx
+
+import fr.ciadlab.fogsimu.config.Configuration
+import fr.ciadlab.fogsimu.scenario.FogSimulationScenarioFactory
+import java.text.MessageFormat
+import javafx.fxml.FXML
+import javafx.scene.Node
+import javafx.scene.control.Button
+import javafx.scene.control.Label
+import javafx.scene.input.MouseEvent
+import org.arakhne.afc.gis.primitive.GISContainer
+import org.arakhne.afc.gis.ui.GisPane
+import org.arakhne.afc.simulation.framework.base.fx.AbstractFxController
+import org.arakhne.afc.simulation.framework.framework1d.scenario.SimulationScenario1d
+import org.arakhne.afc.text.TextUtil
+
+/** JavaFX controller.
+ * 
+ * @author $Author: sgalland$
+ * @version $FullVersion$
+ * @mavengroupid $GroupId$
+ * @mavenartifactid $ArtifactId$
+ */
+class FxController extends AbstractFxController<SimulationScenario1d<Configuration>> {
+
+	@FXML var footnote : Label
+	@FXML var setupButton : Button
+	@FXML var startButton : Button
+	@FXML var stopButton : Button
+	@FXML var noZoomButton : Button
+	@FXML var preferenceButton : Button
+
+	var dataPane : GisPane<GISContainer<?>>
+
+	protected override createViewerNode(scenario : SimulationScenario1d<Configuration>) : Node {
+		this.dataPane = new GisPane(scenario.mapContainer)
+		val mouseLocationPattern = this.bundle.getString("MOUSE_POSITION")
+		this.dataPane.onMouseMoved = [ ^event |
+			val mousePosition = this.dataPane.toDocumentPosition(^event.x, ^event.y)
+			this.footnote.text = MessageFormat::format(mouseLocationPattern,
+				TextUtil::formatDouble(^event.x, 1), TextUtil::formatDouble(^event.y, 1),
+				TextUtil::formatDouble(mousePosition.x, 4), TextUtil::formatDouble(mousePosition.y, 4))
+		]
+		this.dataPane.addEventHandler(MouseEvent::MOUSE_DRAGGED, [ ^event |
+			val mousePosition = this.dataPane.toDocumentPosition(^event.x, ^event.y)
+			this.footnote.text = MessageFormat.format(mouseLocationPattern,
+				TextUtil::formatDouble(^event.x, 1), TextUtil::formatDouble(^event.y, 1),
+				TextUtil::formatDouble(mousePosition.x, 4), TextUtil::formatDouble(mousePosition.y, 4))
+		])
+		return dataPane
+	}
+
+	protected override beforeScenarioSetup {
+		this.setupButton.disable = true
+	}
+
+	protected override afterScenarioInit {
+		this.startButton.disable = false
+		this.noZoomButton.disable = false
+	}
+
+	protected override afterScenarioSetup(error : boolean) {
+		this.setupButton.disable = !error
+	}
+	
+	/** Setup the simulator.
+	 */
+	@SuppressWarnings("discouraged_reference")
+	@FXML
+	protected def actionSetup {
+		val file = selectScenarioFile
+		if (file !== null) {
+			var task = createSetupTask(file, new FogSimulationScenarioFactory)
+			task.start
+		}
+	}
+	
+	protected override beforeSimulationStart {
+		this.startButton.disable = true
+	}
+
+	protected override afterSimulationStart(error : boolean) {
+		this.startButton.disable = !error
+		this.setupButton.disable = !error
+		this.stopButton.disable = error
+	}
+
+	/** Start the simulator.
+	 */
+	@FXML
+	protected def actionStart {
+		startSimulation
+	}
+
+	protected def beforeSimulationStop {
+		this.stopButton.disable = true
+	}
+
+	protected def afterSimulationStop {
+		this.setupButton.disable = false
+	}
+
+	/** Stop the simulator.
+	 */
+	@FXML
+	protected def actionStop {
+		stopSimulation
+	}
+
+	/** Reset the zoom on the view.
+	 */
+	@FXML
+	protected def actionNoZoom {
+		this.dataPane.resetScale
+		this.dataPane.resetViewportCenter
+	}
+
+	/** Show the preferences for the simulator.
+	 */
+	@FXML
+	protected def actionPreference {
+	}
+
+}
